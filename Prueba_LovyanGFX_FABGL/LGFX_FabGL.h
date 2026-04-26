@@ -111,6 +111,22 @@ public:
     void writeImage(uint_fast16_t x, uint_fast16_t y,
                     uint_fast16_t w, uint_fast16_t h,
                     lgfx::pixelcopy_t* param, bool use_dma) override {
+        if (!_vga) return;
+        // Si el fuente es RGB565 sin transparencia, leemos directo del puntero
+        // para evitar que fp_copy acceda a memoria invalida con indices absolutos
+        if (param->src_depth == lgfx::rgb565_2Byte && param->transp == lgfx::pixelcopy_t::NON_TRANSP) {
+            const uint16_t* src = reinterpret_cast<const uint16_t*>(param->src_data);
+            if (src) {
+                setWindow(x, y, x + w - 1, y + h - 1);
+                uint32_t len = (uint32_t)w * h;
+                for (uint32_t i = 0; i < len; i++) {
+                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i]));
+                    if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
+                }
+                return;
+            }
+        }
+        // Fallback: ruta normal por fp_copy
         setWindow(x, y, x + w - 1, y + h - 1);
         writePixels(param, (uint32_t)w * h, use_dma);
     }
@@ -148,7 +164,7 @@ private:
         uint8_t r = ((rawcolor >> 11) & 0x1F) << 3;  // 5 bits → 8 bits
         uint8_t g = ((rawcolor >>  5) & 0x3F) << 2;  // 6 bits → 8 bits
         uint8_t b = ( rawcolor        & 0x1F) << 3;  // 5 bits → 8 bits
-        return _vga->createRawPixel(fabgl::RGB888(b, r, g));
+        return _vga->createRawPixel(fabgl::RGB888(r, g, b));
     }
 };
 
@@ -173,4 +189,5 @@ public:
         return true;
     }
 };
+
 
