@@ -28,9 +28,6 @@ public:
     void waitDisplay()      override {}
     bool displayBusy()      override { return false; }
 
-    // ── Métodos que Panel_Device deja vacíos pero IPanel
-    //    necesita — los sobreescribimos con nuestra lógica ──
-
     lgfx::color_depth_t setColorDepth(lgfx::color_depth_t depth) override {
         _write_depth = depth;
         _read_depth  = depth;
@@ -47,7 +44,6 @@ public:
     void setSleep(bool)     override {}
     void setPowerSave(bool) override {}
 
-    // ── Stubs que Panel_Device no implementa ─────────────
     void writeCommand(uint32_t, uint_fast8_t) override {}
     void writeData   (uint32_t, uint_fast8_t) override {}
     void initDMA()    override {}
@@ -58,14 +54,12 @@ public:
     bool isReadable()  const override { return false; }
     bool isBusShared() const override { return false; }
 
-    // ── Ventana ───────────────────────────────────────────
     void setWindow(uint_fast16_t xs, uint_fast16_t ys,
                    uint_fast16_t xe, uint_fast16_t ye) override {
         _xs = xs; _ys = ys; _xe = xe; _ye = ye;
         _cx = xs; _cy = ys;
     }
 
-    // ── Dibujo — aquí está toda la lógica real ────────────
     void drawPixelPreclipped(uint_fast16_t x, uint_fast16_t y,
                              uint32_t rawcolor) override {
         if (!_vga) return;
@@ -94,12 +88,24 @@ public:
     void writePixels(lgfx::pixelcopy_t* param,
                      uint32_t len, bool use_dma) override {
         if (!_vga) return;
+        // Ruta rapida: src RGB565 sin transparencia — leemos directo del puntero
+        if (param->src_depth == lgfx::rgb565_2Byte && param->transp == lgfx::pixelcopy_t::NON_TRANSP) {
+            const uint16_t* src = reinterpret_cast<const uint16_t*>(param->src_data);
+            if (src) {
+                for (uint32_t i = 0; i < len; i++) {
+                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i]));
+                    if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
+                }
+                return;
+            }
+        }
+        // Fallback: ruta normal por fp_copy con indices relativos
         constexpr uint32_t CHUNK = 64;
         uint16_t buf[CHUNK];
         uint32_t done = 0;
         while (done < len) {
             uint32_t chunk = min((uint32_t)CHUNK, len - done);
-            param->fp_copy(buf, done, done + chunk, param);
+            param->fp_copy(buf, 0, chunk, param);
             for (uint32_t i = 0; i < chunk; i++) {
                 _vga->setRawPixel(_cx, _cy, _toRaw(buf[i]));
                 if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
@@ -112,8 +118,7 @@ public:
                     uint_fast16_t w, uint_fast16_t h,
                     lgfx::pixelcopy_t* param, bool use_dma) override {
         if (!_vga) return;
-        // Si el fuente es RGB565 sin transparencia, leemos directo del puntero
-        // para evitar que fp_copy acceda a memoria invalida con indices absolutos
+        // Ruta rapida para RGB565 sin transparencia (JPEG, pushRect, etc.)
         if (param->src_depth == lgfx::rgb565_2Byte && param->transp == lgfx::pixelcopy_t::NON_TRANSP) {
             const uint16_t* src = reinterpret_cast<const uint16_t*>(param->src_data);
             if (src) {
@@ -159,7 +164,7 @@ private:
     //   bits [10: 5] = G (6 bits)
     //   bits [ 4: 0] = B (5 bits)
     // Expandimos a RGB888 y dejamos que createRawPixel haga
-    // la conversión correcta al formato interno de FabGL (6 bits, BGR).
+    // la conversion correcta al formato interno de FabGL (6 bits).
     inline uint8_t _toRaw(uint32_t rawcolor) {
         uint8_t r = ((rawcolor >> 11) & 0x1F) << 3;  // 5 bits → 8 bits
         uint8_t g = ((rawcolor >>  5) & 0x3F) << 2;  // 6 bits → 8 bits
@@ -189,5 +194,6 @@ public:
         return true;
     }
 };
+
 
 
