@@ -5,9 +5,14 @@
 static constexpr uint16_t PANEL_W = 320;
 static constexpr uint16_t PANEL_H = 200;
 
+
+
+
+
 class Panel_FabGL : public lgfx::Panel_Device {
 public:
     fabgl::VGAController* _vga = nullptr;
+    bool toggle=true;
 
     Panel_FabGL() {
         _cfg.memory_width  = PANEL_W;
@@ -16,6 +21,7 @@ public:
         _cfg.panel_height  = PANEL_H;
         _cfg.offset_x      = 0;
         _cfg.offset_y      = 0;
+        
     }
 
     bool init(bool use_reset) override {
@@ -63,14 +69,14 @@ public:
     void drawPixelPreclipped(uint_fast16_t x, uint_fast16_t y,
                              uint32_t rawcolor) override {
         if (!_vga) return;
-        _vga->setRawPixel(x, y, _toRaw(rawcolor));
+        _vga->setRawPixel(x, y, _toRaw(rawcolor,toggle));
     }
 
     void writeFillRectPreclipped(uint_fast16_t x, uint_fast16_t y,
                                  uint_fast16_t w, uint_fast16_t h,
                                  uint32_t rawcolor) override {
         if (!_vga) return;
-        uint8_t raw = _toRaw(rawcolor);
+        uint8_t raw = _toRaw(rawcolor,toggle);
         for (uint_fast16_t row = y; row < y + h; row++)
             for (uint_fast16_t col = x; col < x + w; col++)
                 _vga->setRawPixel(col, row, raw);
@@ -78,7 +84,7 @@ public:
 
     void writeBlock(uint32_t rawcolor, uint32_t len) override {
         if (!_vga) return;
-        uint8_t raw = _toRaw(rawcolor);
+        uint8_t raw = _toRaw(rawcolor,toggle);
         for (uint32_t i = 0; i < len; i++) {
             _vga->setRawPixel(_cx, _cy, raw);
             if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
@@ -93,7 +99,7 @@ public:
             const uint16_t* src = reinterpret_cast<const uint16_t*>(param->src_data);
             if (src) {
                 for (uint32_t i = 0; i < len; i++) {
-                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i]));
+                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i],toggle));
                     if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
                 }
                 return;
@@ -107,7 +113,7 @@ public:
             uint32_t chunk = min((uint32_t)CHUNK, len - done);
             param->fp_copy(buf, 0, chunk, param);
             for (uint32_t i = 0; i < chunk; i++) {
-                _vga->setRawPixel(_cx, _cy, _toRaw(buf[i]));
+                _vga->setRawPixel(_cx, _cy, _toRaw(buf[i],toggle));
                 if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
             }
             done += chunk;
@@ -125,7 +131,7 @@ public:
                 setWindow(x, y, x + w - 1, y + h - 1);
                 uint32_t len = (uint32_t)w * h;
                 for (uint32_t i = 0; i < len; i++) {
-                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i]));
+                    _vga->setRawPixel(_cx, _cy, _toRaw(src[i],toggle));
                     if (++_cx > _xe) { _cx = _xs; if (++_cy > _ye) _cy = _ys; }
                 }
                 return;
@@ -165,23 +171,52 @@ private:
     //   bits [ 4: 0] = B (5 bits)
     // Expandimos a RGB888 y dejamos que createRawPixel haga
     // la conversion correcta al formato interno de FabGL (6 bits).
-    inline uint8_t _toRaw(uint32_t rawcolor) {
-        uint8_t r = ((rawcolor >> 11) & 0x1F) << 3;  // 5 bits → 8 bits
-        uint8_t g = ((rawcolor >>  5) & 0x3F) << 2;  // 6 bits → 8 bits
-        uint8_t b = ( rawcolor        & 0x1F) << 3;  // 5 bits → 8 bits
+    // Con rgb_order=true LovyanGFX entrega rawcolor en RGB565 estándar:
+    //   bits [15:11] = R (5 bits)
+    //   bits [10: 5] = G (6 bits)
+    //   bits [ 4: 0] = B (5 bits)
+
+    inline uint8_t _toRaw(uint32_t rawcolor,bool t) {
+   
+    uint16_t r,g,b;
+
+    if (t){
+     r = (rawcolor >> 3)  & 0x1F; // bits 7–3
+     g = (rawcolor >> 10) & 0x3F; // bits 15–10
+     b = (rawcolor>> 8)  & 0x1F; // bits 12–8
+        }
+    else
+     {
+        r = ((rawcolor >> 11) & 0x1F);  // 5 bits → 8 bits
+        g = ((rawcolor >>  5) & 0x3F);  // 6 bits → 8 bits
+        b = ( rawcolor        & 0x1F);  // 5 bits → 8 bits
+      }
+                 
+        r =r << 3;  // 5 bits → 8 bits
+        g = g << 2;  // 6 bits → 8 bits
+        b = b << 3;  // 5 bits → 8 bits
+        
         return _vga->createRawPixel(fabgl::RGB888(r, g, b));
     }
 };
 
-class LGFX_FabGL : public lgfx::LGFX_Device {
+class LGFX : public lgfx::LGFX_Device {
     Panel_FabGL _panel;
 public:
-    LGFX_FabGL() {
+    LGFX() {
+
+         
+
         setPanel(&_panel);
     }
 
     void setVGA(fabgl::VGAController* vga) {
         _panel._vga = vga;
+    }
+
+    void changePalette()
+    {
+        _panel.toggle=!_panel.toggle;
     }
 
     bool init() {
@@ -194,6 +229,5 @@ public:
         return true;
     }
 };
-
 
 
