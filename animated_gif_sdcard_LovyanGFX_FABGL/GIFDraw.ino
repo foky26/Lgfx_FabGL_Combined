@@ -91,5 +91,3 @@ void GIFDraw(GIFDRAW *pDraw)
         }
     }
 } /* GIFDraw() */
-
-

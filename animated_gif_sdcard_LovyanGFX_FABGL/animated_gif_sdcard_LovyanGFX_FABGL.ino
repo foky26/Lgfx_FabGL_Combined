@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <FS.h>
 #include <Arduino.h>
-#include <fabgl.h>
+
 #include "LGFX_FabGL.h"
 #include <AnimatedGIF.h>
 
@@ -16,7 +16,7 @@
 
 // ── Objetos globales ──────────────────────────────────────
 fabgl::VGAController displayController;
-LGFX_FabGL display;   // nuestro panel personalizado
+LGFX display;   // nuestro panel personalizado
 
 AnimatedGIF gif;
 File gifFile;
@@ -147,6 +147,8 @@ void setup()
 
   gif.begin(LITTLE_ENDIAN_PIXELS);
   display.fillScreen(TFT_BLACK);
+
+  display.changePalette(); // Change Colors
 }
 
 // ── Loop ──────────────────────────────────────────────────
@@ -155,6 +157,7 @@ void loop()
   char *szDir = "/";
   char fname[256];
   File root, temp;
+
 
   while (1) {
     root = SD.open(szDir);
@@ -166,7 +169,9 @@ void loop()
           strcat(fname, temp.name());
           if (!ErasedFile(fname)) {
             Serial.printf("Reproduciendo %s\n", temp.name());
+           
             ShowGIF(fname);
+           
           }
         }
         temp.close();
